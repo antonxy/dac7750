@@ -12,13 +12,14 @@ extern crate embedded_hal as hal;
 
 use core::fmt::Debug;
 use core::convert::TryInto;
+use defmt::Format;
 
 use hal::blocking::spi;
 
 use modular_bitfield_msb::prelude::*;
 
 
-#[derive(BitfieldSpecifier, Debug)]
+#[derive(BitfieldSpecifier, Debug, Format)]
 #[bits = 3]
 #[allow(non_camel_case_types)]
 /// Range of output in mA
@@ -31,7 +32,7 @@ pub enum Range {
     mA_0_24 = 7
 }
 
-#[derive(BitfieldSpecifier, Debug)]
+#[derive(BitfieldSpecifier, Debug, Format)]
 #[bits = 4]
 pub enum SlewUpdateRate {
     Hz258_065 = 0,
@@ -52,7 +53,7 @@ pub enum SlewUpdateRate {
     Hz3_300 = 15,
 }
 
-#[derive(BitfieldSpecifier, Debug)]
+#[derive(BitfieldSpecifier, Debug, Format)]
 #[bits = 3]
 pub enum SlewStepSize {
     S1 = 0,
@@ -86,7 +87,7 @@ pub enum SlewStepSize {
 ///  .with_range(Range::mA_4_20)
 /// ```
 #[bitfield(bits = 16)]
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Format)]
 pub struct Control {
     #[skip] __: B2,
     /// External current setting resistor enable
@@ -122,7 +123,7 @@ pub struct Control {
 /// Status::new().i_flt()
 /// ```
 #[bitfield(bits = 16)]
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Format)]
 pub struct Status {
     #[skip] __: B11,
     /// CRC fault
@@ -169,57 +170,58 @@ where
     ///     });
     /// let spi = ctx.device.SPI3.spi((sck, miso, mosi, cs), config, 1.mhz(), ccdr.peripheral.SPI3, &ccdr.clocks);
     /// ```
-    pub fn new(spi: SPI) -> Self {
+    pub fn new(spi: SPI) -> Result<Self, E> {
         let mut dac = Self {
             spi
         };
-        dac.reset();
-        dac
+        dac.reset()?;
+        Ok(dac)
     }
 
-    fn transmit(&mut self, data: &[u8; 3]) {
-        self.spi.write(data).ok();
+    fn transmit(&mut self, data: &[u8; 3]) -> Result<(), E> {
+        self.spi.write(data)
     }
 
-    fn read<'a>(&mut self, data: &'a mut [u8;3]) -> &'a[u8; 3] {
+    fn read<'a>(&mut self, data: &'a mut [u8;3]) -> Result<&'a[u8; 3], E> {
         self.spi.write(data).ok();
         data[0] = 0;
         data[1] = 0;
         data[2] = 0;
-        self.spi.transfer(data).ok().unwrap().try_into().unwrap()
+        self.spi.transfer(data)?;
+        Ok(data)
     }
 
-    pub fn reset(&mut self) {
-        self.transmit(&[0x56, 0x0, 0x1]);
+    pub fn reset(&mut self) -> Result<(), E> {
+        self.transmit(&[0x56, 0x0, 0x1])
     }
 
-    pub fn read_status(&mut self) -> Status {
+    pub fn read_status(&mut self) -> Result<Status, E> {
         let mut data = [0x02, 0x0, 0x0];
-        let r = self.read(&mut data);
-        Status::from_bytes(r[1..].try_into().unwrap())
+        let r = self.read(&mut data)?;
+        Ok(Status::from_bytes(r[1..].try_into().unwrap()))
     }
 
-    pub fn set_value(&mut self, data: u16) {
+    pub fn set_value(&mut self, data: u16) -> Result<(), E> {
         let mut tr = [0x01, 0x0, 0x0];
         tr[1..3].copy_from_slice(&data.to_be_bytes());
-        self.transmit(&tr);
+        self.transmit(&tr)
     }
 
-    pub fn read_value(&mut self) -> u16 {
+    pub fn read_value(&mut self) -> Result<u16, E> {
         let mut data = [0x02, 0x0, 0x01];
-        let res = self.read(&mut data);
-        u16::from_be_bytes(res[1..].try_into().unwrap())
+        let res = self.read(&mut data)?;
+        Ok(u16::from_be_bytes(res[1..].try_into().unwrap()))
     }
 
-    pub fn set_control(&mut self, ctrl: Control) {
+    pub fn set_control(&mut self, ctrl: Control) -> Result<(), E> {
         let mut tr = [0x55, 0x0, 0x0];
         tr[1..3].copy_from_slice(&ctrl.into_bytes());
-        self.transmit(&tr);
+        self.transmit(&tr)
     }
 
-    pub fn read_control(&mut self) -> Control {
+    pub fn read_control(&mut self) -> Result<Control, E> {
         let mut data = [0x02, 0x0, 0x02];
-        let res = self.read(&mut data);
-        Control::from_bytes(res[1..].try_into().unwrap())
+        let res = self.read(&mut data)?;
+        Ok(Control::from_bytes(res[1..].try_into().unwrap()))
     }
 }

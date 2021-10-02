@@ -8,3 +8,4 @@ edition = "2018"
 [dependencies]
 embedded-hal = "0.2.6"
 modular-bitfield-msb = "0.11.2"
+defmt = "0.2.0"
